@@ -1,5 +1,6 @@
 #include<iostream>
-
+#include <fstream>
+#include <vector>
 using namespace std;
 
 #include "z10n.h"

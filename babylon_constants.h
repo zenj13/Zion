@@ -20,6 +20,13 @@
  
 
 
+ map<uint32_t,deque<uint8_t>> client_wrkers;
+ mutex clientwrkers_lock;
+
+ void setClientWrker()
+ {
+
+ }
 
  int8_t def_batch_nos[5]={1,2,3,4,5};
 
@@ -67,6 +74,9 @@
 
  struct client_pod
  {
+
+    uint8_t my_zone = 0;
+    uint32_t zonal_id = 0;
     std::chrono::high_resolution_clock::time_point init_startTime;/// = std::chrono::high_resolution_clock::now();
     bool crt_ok = false;
     bool ctt_ok = false;
@@ -154,9 +164,11 @@
 
     //packs a packet into a babylon pdu
 
-    void initZion(int sock_fd)
+    void initZion(int sock_fd,uint32_t zn_id,uint8_t zonal)
     {
       zion_socket = sock_fd;
+      zonal_id = zn_id;
+      my_zone = zonal;
       missin_pdus_sent = false;
       tx_timeout = 1000;
       init_startTime = std::chrono::high_resolution_clock::now();
@@ -397,7 +409,13 @@
         tcount_lock.unlock();
         if((xTCOUNT>MAX_TCOUNT)&&(MAX_TCOUNT!=0))
         {
+            deque<uint8_t> &zn_de = client_wrkers[zonal_id];
+            clientwrkers_lock.lock();
+            zn_de.pop_back();
+            clientwrkers_lock.unlock();
             bool reseted = resetTCOUNT();
+
+           // return -1;
             /*if(reseted==true)
             {
                 TCOUNT= TCOUNT + 1;
@@ -442,7 +460,9 @@
         ctrlRRESETTAIL();
         cout<<"\n\nback to back head"<<endl;
         cout.flush();
-    
+        clientwrkers_lock.lock();
+        client_wrkers[zonal_id].push_front(my_zone);
+        clientwrkers_lock.unlock();
     }
 
     void getMissingPDUs()
@@ -538,7 +558,7 @@
                 cout<<"\n\t\t\tinvalid future\n\n";
                 cout.flush();
             }
-             rreset_timer = async(launch::async,doTimerXX,ref(kill_rresettimer_lock),ref(kill_rresettimer),ref(tx_timeout),zion_socket,ref(export_addr),ref(export_addr_len),ref(rreset_head_pdu),ref(rfs_sz));
+           ///  rreset_timer = async(launch::async,doTimerXX,ref(kill_rresettimer_lock),ref(kill_rresettimer),ref(tx_timeout),zion_socket,ref(export_addr),ref(export_addr_len),ref(rreset_head_pdu),ref(rfs_sz));
            // rreset_timer = async(launch::async,doTimer,ref(kill_rresettimer_lock),ref(kill_rresettimer),ref(tx_timeout),zion_socket,ref(export_addr),ref(export_addr_len),ref(rreset_head_pdu),ref(rfs_sz));
 
         //    rreset_timer = async(launch::async,doTimer_cv,ref(kill_rresettimer_lock),ref(kill_rresettimer_cv),ref(kill_rresettimer),ref(tx_timeout),zion_socket,ref(export_addr),ref(export_addr_len),ref(rreset_head_pdu),ref(rfs_sz));
@@ -559,6 +579,7 @@
        // TCOUNT = 1;
        // tcount_lock.unlock();
      //  rreset_timer.get();
+        /*
        cout<<"\n\n: reset timer cv finished: "<<endl<<endl;//missin_pdus_sent<<endl<<endl;
        cout.flush();
        while(true)
@@ -586,6 +607,8 @@
       //  batch_no = 1;
         cout<<endl<<"reset ok"<<endl;
         cout.flush();
+        */
+
         return true;
 
     }
@@ -831,6 +854,7 @@
             cout<<endl<<"back head"<<endl;
             cout.flush();
             
+            /*
             pbi_xlock.lock();
             {
                // unique_lock<shared_mutex> lock(pbi_lock);
@@ -845,13 +869,14 @@
                 logDura("next batch ind: ",(0+(present_batch_indexes.back())));
             }
             pbi_xlock.unlock();
+            */
 
-            /*
+            
             export_addr_lock.lock();
             export_addr = a_addr;
             export_addr_len = a_addrlen;
             export_addr_lock.unlock();
-            */
+            
             
             /*
             pronto_sockaddrs_lock.lock();

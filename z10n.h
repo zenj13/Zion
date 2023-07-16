@@ -117,6 +117,10 @@ static void inporter(int zsock,map<int,map<uint8_t,client_pod>> &client_pod_map,
         {
            // sockaddr_in *sinx = (sockaddr_in*)&tzion_addr;
            // int ipaddr =  sinx->sin_addr.s_addr;
+            clientwrkers_lock.lock();
+            client_wrkers[ipaddr].push_front(this_batch_ctx);
+            clientwrkers_lock.unlock();
+
             cout<<"\ninitialising client: "<<inet_ntoa(sinx->sin_addr)<<" with port: "<<ntohs(sinx->sin_port)<<endl;
             cout.flush();
             map<uint8_t,client_pod> &client_pod_s = client_pod_map[ipaddr];
@@ -124,7 +128,7 @@ static void inporter(int zsock,map<int,map<uint8_t,client_pod>> &client_pod_map,
             map<uint8_t,client_pod>::iterator cpm_iterator = client_pod_s.find(this_batch_ctx);
             if(cpm_iterator==client_pod_s.end())
             {
-              client_pod_s[this_batch_ctx].initZion(zsock);
+              client_pod_s[this_batch_ctx].initZion(zsock,ipaddr,this_batch_ctx);
             }
 
             clientpod_map_lock.lock();
@@ -149,17 +153,18 @@ static void inporter(int zsock,map<int,map<uint8_t,client_pod>> &client_pod_map,
             */
             //global_sock_lock.lock();
             sendto(zsock,(char*)INIT_CMD_TAIL,sizeof(INIT_CMD_TAIL),0,&tzion_addr,tzion_addr_len);
-
+            /*
             pbi_xlock.lock();
             {
               ///unique_lock<shared_mutex> lock(pbi_lock);
               present_batch_indexes.push_front(this_batch_ctx);
             }
             pbi_xlock.unlock();
+            */
             //global_sock_lock.unlock();
 
           //  t_cp.cr_timer_thread = async(launch::async,crInitTimer,zsock,ref(t_cp));
-
+        cout<<endl<<"finished setting up"<<endl;
         t_cp.toggle_crt();
         }
         else if(memcmp(&inport[1],CT_INIT_CMD_HEAD,sizeof(CT_INIT_CMD_HEAD))==0)
@@ -173,7 +178,7 @@ static void inporter(int zsock,map<int,map<uint8_t,client_pod>> &client_pod_map,
             cout.flush();
             if(cpm_iterator==client_pod_s.end())
             {
-              client_pod_s[this_batch_ctx].initZion(zsock);
+              client_pod_s[this_batch_ctx].initZion(zsock,ipaddr,this_batch_ctx);
             }
 
             clientpod_map_lock.lock();
@@ -196,7 +201,8 @@ static void inporter(int zsock,map<int,map<uint8_t,client_pod>> &client_pod_map,
           //  t_cp.ct_timer_thread = async(launch::async,ctInitTimer,zsock,ref(t_cp));
           
           t_cp.toggle_ctt();
-
+          cout<<endl<<"finished initialising client\n";
+          cout.flush();
         }
         else if(memcmp(&inport[1],CR_INIT_CMD_FIN,sizeof(CR_INIT_CMD_FIN))==0)
         {
@@ -251,7 +257,7 @@ static void inporter(int zsock,map<int,map<uint8_t,client_pod>> &client_pod_map,
           cout<<"\ndata from client: "<<inet_ntoa(sinx->sin_addr)<<" with port: "<<ntohs(sinx->sin_port)<<endl;
             cout.flush();
           client_pod &active_pod = client_pod_map[ipaddr][this_batch_ctx];
-          active_pod.inportsCtrl(&inport[1],(inport_size-1),tzion_addr,tzion_addr_len);
+          active_pod.inportsCtrl(&inport[1],(inport_size-2),tzion_addr,tzion_addr_len);
         }
         /*
         else if(memcmp(inport,BACK_HEAD,sizeof(BACK_HEAD))==0)
@@ -453,7 +459,7 @@ class ZionServer
 
             map<int,map<uint8_t,client_pod>>::iterator cpm_iterator = client_pod_map.find(client_id);
             int sent_data = 0;
-            uint8_t ex_batch_indx = last_batch_ind;
+            uint8_t ex_batch_indx = 0;//last_batch_ind;
             if(cpm_iterator==client_pod_map.end())
             {
               cout<<endl<<"no memories of client: "<<client_id<<" with addr: "<<inet_ntoa(getIpAddr_int(client_id))<<endl;
@@ -462,9 +468,10 @@ class ZionServer
             else
             {
 
-              cout<<endl<<":preparing out: "<<ex_batch_indx<<endl;
+              cout<<endl<<":preparing out: "<<(0+ex_batch_indx)<<endl;
               cout.flush();
 
+              /*
               pbi_xlock.lock();
               {
                //   shared_lock<shared_mutex> lock(pbi_lock);
@@ -481,7 +488,14 @@ class ZionServer
 
               }
               pbi_xlock.unlock();
-              
+              */
+              while(true)
+              {
+              ///clientwrkers_lock.lock();
+              int cw_sz = client_wrkers[client_id].size();
+              if(cw_sz>0)
+              {
+                ex_batch_indx = client_wrkers[client_id].back();
               
 
               client_pod &clientpod = (cpm_iterator->second)[ex_batch_indx];
@@ -497,9 +511,21 @@ class ZionServer
             
 
               sent_data = clientpod.sendExports(export_data,export_data_len);
+              cout<<"\n\t\tsent clientpod data: "<<sent_data<<endl;
+              cout.flush();
+              if (sent_data<=0)
+              {
+                continue;
+              }
+              else
+              {
+                  break;
+              }
+              }
+              ///clientwrkers_lock.unlock();
 
             }
-
+            }
             return sent_data;
         }
 
